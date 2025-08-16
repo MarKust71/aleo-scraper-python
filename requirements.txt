@@ -1,0 +1,4 @@
+python-dotenv
+selenium
+beautifulsoup4
+psycopg2-binary
