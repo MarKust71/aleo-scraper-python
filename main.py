@@ -12,7 +12,7 @@ driver = webdriver.Chrome()
 base_url = "https://aleo.com/pl"
 
 COUNT = 100
-PHRASE = "b"
+PHRASE = "d"
 # VOIVODSHIPS = ""
 VOIVODSHIPS = "SLASKIE"
 CITY = "Katowice"
@@ -30,6 +30,8 @@ if REGISTRY_TYPE:
 # ALEO_PAGE_URL=f"{base_url}/firmy?phrase={PHRASE}&count={COUNT}&voivodeships={VOIVODSHIPS}&city={CITY}&registryType={REGISTRY_TYPE}"
 
 driver.get(f"{ALEO_PAGE_URL}")
+
+print("Page loaded")
 
 
 # %%
@@ -197,3 +199,185 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
 
 
 print(f"Processed {len(augment_companies_with_contacts(driver, companies_list))} companies")
+
+
+# %%
+import os, psycopg2
+
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
+
+# parametrów połączenia nie trzeba wczytywać ponownie, .env jest już załadowane :contentReference[oaicite:1]{index=1}
+DB_HOST     = os.getenv("DB_HOST", "localhost")
+DB_PORT     = os.getenv("DB_PORT", 5432)
+DB_NAME     = os.getenv("DB_NAME", "booksy_scraper")
+DB_USER     = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+
+# ——— ZAPIS DO BAZY POSTGRES ———
+try:
+    print("Zapisywanie do bazy PostgreSQL...")
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        connect_timeout=30,        # zwiększony timeout
+        gssencmode='disable',      # wyłączenie GSSAPI
+        sslmode='prefer',          # elastyczne podejście do SSL
+        client_encoding='UTF8'
+    )
+    print(f"  PostgreSQL connection: {conn}")
+
+    cur = conn.cursor()
+    print(f"  PostgreSQL cursor: {cur}")
+
+    ###############################################
+    ## tworzymy tabelę (jeśli nie istnieje)
+    print("  Tworzenie tabel...")
+    cur.execute("""
+                CREATE TABLE IF NOT EXISTS connections (
+                                                           id                   SERIAL PRIMARY KEY,
+                                                           name                 TEXT,
+                                                           aleo_url             TEXT UNIQUE,
+                                                           address              TEXT,
+                                                           nip                  TEXT UNIQUE,
+                                                           regon                TEXT UNIQUE,
+                                                           email                TEXT,
+                                                           phone                TEXT,
+                                                           website              TEXT,
+                                                           search_phrase        TEXT,
+                                                           search_voivodships   TEXT,
+                                                           search_city          TEXT,
+                                                           created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                                           updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+    conn.commit()
+    print("  Tworzenie tabel zakończone.")
+
+    ## dodajemy funkcję do aktualizacji updated_at
+    print("  Dodawanie funkcji do aktualizacji updated_at...")
+    cur.execute("""
+                CREATE OR REPLACE FUNCTION update_updated_at_column()
+                    RETURNS TRIGGER AS $$
+                BEGIN
+                    NEW.updated_at = CURRENT_TIMESTAMP;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                """)
+    conn.commit()
+    print("  Dodawanie funkcji zakończone.")
+
+    ## dodajemy trigger do tabeli connections
+    print("  Dodawanie triggera do tabeli connections...")
+    cur.execute("""
+                    DROP TRIGGER IF EXISTS set_updated_at ON connections;
+                    CREATE TRIGGER set_updated_at
+                    BEFORE UPDATE ON connections
+                    FOR EACH ROW
+                    EXECUTE FUNCTION update_updated_at_column();
+        """)
+    conn.commit()
+    print("  Dodawanie triggera zakończone.")
+
+
+    ## ——— Dodaj unikalny indeks na aleo_url ———
+    print("  Dodawanie unikalnego indeksu...")
+    cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS unique_connection_url
+                    ON connections (aleo_url);
+                """)
+    conn.commit()
+    print("  Dodawanie unikalnego indeksu zakończone.")
+
+    print("Tworzenie tabeli zakończone.")
+    ## koniec tworzenia tabeli
+    ###############################################
+
+
+
+
+    # cur.execute(f"SELECT booksy_url FROM connections WHERE search_group='{SEARCH_GROUP}' "
+    #             f"AND search_location='{SEARCH_LOCATION}';")
+    # seen_connections = {row[0] for row in cur.fetchall() if row[0]}
+    # print(f"Liczba unikalnych połączeń: {len(seen_connections)}")
+
+    # zamknięcie połączenia
+    cur.close()
+
+except psycopg2.OperationalError as e:
+    print(f"Błąd połączenia z bazą danych: {e}")
+    raise
+finally:
+    if 'conn' in locals() and conn is not None:
+        conn.close()
+        print("PostgreSQL connection closed.")
+
+# ——— KONIEC ZAPISU ———
+
+
+
+# %%
+# ——— ZAPIS DO BAZY POSTGRES ———
+try:
+    print("Zapisywanie do bazy PostgreSQL...")
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        connect_timeout=30,        # zwiększony timeout
+        gssencmode='disable',      # wyłączenie GSSAPI
+        sslmode='prefer',          # elastyczne podejście do SSL
+        client_encoding='UTF8'
+    )
+    print(f"  PostgreSQL connection: {conn}")
+
+    cur = conn.cursor()
+    print(f"  PostgreSQL cursor: {cur}")
+
+    ## dodawanie rekordów do tabeli
+    number = 0
+    for c in companies_list:
+        pprint(c)
+        cur.execute("""
+                    INSERT INTO connections
+                    (name, aleo_url, address, nip, regon, email, phone, website, search_phrase,
+                     search_voivodships, search_city)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING;
+                    """, (
+                        c["name"],
+                        c["url"],
+                        c["address"],
+                        c["nip"],
+                        c["regon"],
+                        c["email"] if "email" in c else None,
+                        c["phone"] if "phone" in c else None,
+                        c["website"] if "website" in c else None,
+                        PHRASE,
+                        VOIVODSHIPS,
+                        CITY
+                    ))
+        conn.commit()
+        number += 1
+        print(number)
+    ## koniec dodawania rekordów
+
+    # zamknięcie połączenia
+    cur.close()
+
+except psycopg2.OperationalError as e:
+    print(f"Błąd połączenia z bazą danych: {e}")
+    raise
+finally:
+    if 'conn' in locals() and conn is not None:
+        conn.close()
+        print("PostgreSQL connection closed.")
+
+# ——— KONIEC ZAPISU ———
