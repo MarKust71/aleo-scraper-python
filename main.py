@@ -11,12 +11,10 @@ driver = webdriver.Chrome()
 
 # %%
 COUNT = 100
-PHRASE = "a"
-# VOIVODSHIPS = ""
-VOIVODSHIPS = "SLASKIE"
-CITY = "Katowice"
-# CITY = "Zgorzelec"
-REGISTRY_TYPE = "CEIDG"
+PHRASE = "f"
+VOIVODSHIPS = ""
+CITY = ""
+REGISTRY_TYPE = ""
 PAGE = 1
 
 base_url = "https://aleo.com/pl"
@@ -57,6 +55,7 @@ def load_aleo_page(
         registry_type: str = "CEIDG",
         page: int = 1
 ) -> None:
+    global VOIVODSHIPS, PHRASE, COUNT, CITY, REGISTRY_TYPE
     query_page = ""
 
     if phrase:
@@ -88,7 +87,7 @@ def load_aleo_page(
 
 from bs4 import BeautifulSoup
 
-load_aleo_page(driver, "f")
+load_aleo_page(driver, PHRASE)
 
 page_source = driver.page_source
 soup = BeautifulSoup(page_source, "html.parser")
@@ -98,6 +97,7 @@ print(f"Found {company_count} companies")
 
 page_count = get_page_count(company_count, COUNT)
 print(f"Found {page_count} pages")
+
 
 
 
@@ -304,10 +304,73 @@ def store_companies(companies_list: list) -> None:
     # ——— KONIEC ZAPISU ———
 
 
+def filter_companies_not_in_db(companies_list):
+    """
+    Zwraca listę firm, których NIP nie występuje w bazie.
+    """
+    import os, psycopg2
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+
+    # parametrów połączenia nie trzeba wczytywać ponownie, .env jest już załadowane :contentReference[oaicite:1]{index=1}
+    DB_HOST     = os.getenv("DB_HOST", "localhost")
+    DB_PORT     = os.getenv("DB_PORT", 5432)
+    DB_NAME     = os.getenv("DB_NAME", "booksy_scraper")
+    DB_USER     = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+
+    # ——— ZAPYTANIE DO BAZY POSTGRES ———
+    try:
+        print("Zapisywanie do bazy PostgreSQL...")
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            connect_timeout=30,        # zwiększony timeout
+            gssencmode='disable',      # wyłączenie GSSAPI
+            sslmode='prefer',          # elastyczne podejście do SSL
+            client_encoding='UTF8'
+        )
+
+        cur = conn.cursor()
+
+        # wyciągamy wszystkie nip-y z companies_list
+        nips = [c["nip"] for c in companies_list if c.get("nip")]
+
+        if not nips:
+            return companies_list  # brak nipów = nic nie filtrujemy
+
+        # zapytanie do bazy – sprawdzamy jakie NIP-y już istnieją
+        cur.execute(
+            "SELECT nip FROM connections WHERE nip = ANY(%s)",
+            (nips,)
+        )
+        existing_nips = {row[0] for row in cur.fetchall()}
+
+        # filtrujemy tylko te, których nie ma w bazie
+        filtered = [c for c in companies_list if c.get("nip") not in existing_nips]
+
+        cur.close()
+
+    except psycopg2.OperationalError as e:
+        print(f"Błąd połączenia z bazą danych: {e}")
+        return companies_list
+        # raise
+    finally:
+        if 'conn' in locals() and conn is not None:
+            conn.close()
+            print("PostgreSQL connection closed.")
+        return filtered
+    # ——— KONIEC ZAPYTANIA ———
+
+
 from time import sleep
 
 for page in range(1, page_count + 1):
-    load_aleo_page(driver, "f", page=page)
+    load_aleo_page(driver, PHRASE, page=page)
 
     sleep(1)
 
@@ -315,6 +378,7 @@ for page in range(1, page_count + 1):
     soup = BeautifulSoup(page_source, "html.parser")
     companies_on_page = soup.find_all("div", class_="catalog-row-container")
     companies_list = extract_companies(companies_on_page)
+    companies_list = filter_companies_not_in_db(companies_list)
 
     print(f"Found {len(companies_list)} companies on page")
 
@@ -367,7 +431,7 @@ def db_create_tables() -> None:
                                                                aleo_url             TEXT UNIQUE,
                                                                address              TEXT,
                                                                nip                  TEXT UNIQUE,
-                                                               regon                TEXT UNIQUE,
+                                                               regon                TEXT,
                                                                email                TEXT,
                                                                phone                TEXT,
                                                                website              TEXT,
