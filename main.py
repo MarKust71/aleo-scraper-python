@@ -11,10 +11,10 @@ driver = webdriver.Chrome()
 
 # %%
 COUNT = 100
-PHRASE = "f"
+PHRASE = "a"
 VOIVODSHIPS = ""
-CITY = ""
-REGISTRY_TYPE = ""
+CITY = "Wrocław"
+REGISTRY_TYPE = "CEIDG"
 PAGE = 1
 
 base_url = "https://aleo.com/pl"
@@ -50,9 +50,9 @@ def load_aleo_page(
         driver,
         phrase: str = "a",
         count: int = 100,
-        voivodeships: str = "SLASKIE",
-        city: str = "Katowice",
-        registry_type: str = "CEIDG",
+        voivodeships: str = "",
+        city: str = "",
+        registry_type: str = "",
         page: int = 1
 ) -> None:
     global VOIVODSHIPS, PHRASE, COUNT, CITY, REGISTRY_TYPE
@@ -128,12 +128,17 @@ def extract_companies(companies_on_page: list) -> list[dict]:
         regon_tag = company.find("span", class_="regon")
         regon = regon_tag.get_text(strip=True) if regon_tag else ""
 
+        # KRS
+        krs_tag = company.find("span", class_="krs")
+        krs = krs_tag.get_text(strip=True) if krs_tag else ""
+
         results.append({
             "name": name,
             "url": f"{base_url}/{url}",
             "address": address,
             "nip": nip,
-            "regon": regon
+            "regon": regon,
+            "krs": krs
         })
 
     return results
@@ -432,6 +437,7 @@ def db_create_tables() -> None:
                                                                address              TEXT,
                                                                nip                  TEXT UNIQUE,
                                                                regon                TEXT,
+                                                               krs                  TEXT,
                                                                email                TEXT,
                                                                phone                TEXT,
                                                                website              TEXT,
