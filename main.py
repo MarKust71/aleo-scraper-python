@@ -82,9 +82,6 @@ def load_aleo_page(
 
     driver.get(f"{ALEO_PAGE_URL}")
 
-    print(f"Page {page} loaded")
-
-
 from bs4 import BeautifulSoup
 
 load_aleo_page(driver, PHRASE)
@@ -138,7 +135,7 @@ def extract_companies(companies_on_page: list) -> list[dict]:
             "address": address,
             "nip": nip,
             "regon": regon,
-            "krs": krs
+            "krs": krs if krs else None
         })
 
     return results
@@ -173,6 +170,7 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
 
     original_window = driver.current_window_handle
 
+    count = 0
     for company in companies_list:
         url = (company.get("url") or "").strip()
         if not url:
@@ -227,6 +225,8 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
                     company["website"] = _norm_site(site)
 
         finally:
+            count = count + 1
+            print(f"Company {count} of {len(companies_list)}:")
             pprint(company)
             driver.close()
             driver.switch_to.window(original_window)
@@ -274,8 +274,8 @@ def store_companies(companies_list: list) -> None:
             cur.execute("""
                         INSERT INTO connections
                         (name, aleo_url, address, nip, regon, email, phone, website, search_phrase,
-                         search_voivodships, search_city)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         search_voivodships, search_city, krs, search_registry_type)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT DO NOTHING;
                         """, (
                             c["name"],
@@ -288,7 +288,9 @@ def store_companies(companies_list: list) -> None:
                             c["website"] if "website" in c else None,
                             PHRASE,
                             VOIVODSHIPS,
-                            CITY
+                            CITY,
+                            c["krs"] if "krs" in c else None,
+                            REGISTRY_TYPE
                         ))
             conn.commit()
             number += 1
@@ -376,6 +378,7 @@ from time import sleep
 
 for page in range(1, page_count + 1):
     load_aleo_page(driver, PHRASE, page=page)
+    print(f"Page {page} of {page_count} loaded")
 
     sleep(1)
 
@@ -385,9 +388,11 @@ for page in range(1, page_count + 1):
     companies_list = extract_companies(companies_on_page)
     companies_list = filter_companies_not_in_db(companies_list)
 
-    print(f"Found {len(companies_list)} companies on page")
+    companies_found_on_page = len(companies_list)
+    print(f"Found {companies_found_on_page} companies on page")
 
-    print(f"Processed {len(augment_companies_with_contacts(driver, companies_list))} companies")
+    companies_processed = len(augment_companies_with_contacts(driver, companies_list))
+    print(f"Processed {companies_processed} companies")
 
     store_companies(companies_list)
 
