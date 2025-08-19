@@ -11,10 +11,10 @@ driver = webdriver.Chrome()
 
 # %%
 COUNT = 100
-PHRASE = "a"
-VOIVODSHIPS = ""
+PHRASE = "f"
+VOIVODESHIPS = ""
 CITY = "Wrocław"
-REGISTRY_TYPE = "CEIDG"
+REGISTRY_TYPE = "REGON" # do wyboru KRS, CEIDG, REGON
 PAGE = 1
 
 base_url = "https://aleo.com/pl"
@@ -22,7 +22,13 @@ base_url = "https://aleo.com/pl"
 
 
 # %%
-def get_company_count(soup) -> int | None:
+def get_company_count() -> int | None:
+    from bs4 import BeautifulSoup
+
+    load_aleo_page(driver, PHRASE)
+
+    page_source = driver.page_source
+    soup = BeautifulSoup(page_source, "html.parser")
 
     # znajdź element <span> z napisem "Baza firm"
     baza_firm_span = soup.find("span", string="Baza firm")
@@ -55,7 +61,14 @@ def load_aleo_page(
         registry_type: str = "",
         page: int = 1
 ) -> None:
-    global VOIVODSHIPS, PHRASE, COUNT, CITY, REGISTRY_TYPE
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
+    wait = WebDriverWait(driver, 3)  # max 3 sekund
+
+    global VOIVODESHIPS, PHRASE, COUNT, CITY, REGISTRY_TYPE
+
     query_page = ""
 
     if phrase:
@@ -63,7 +76,7 @@ def load_aleo_page(
     if count:
         COUNT = count
     if voivodeships:
-        VOIVODSHIPS = voivodeships
+        VOIVODESHIPS = voivodeships
     if city:
         CITY = city
     if registry_type:
@@ -73,23 +86,17 @@ def load_aleo_page(
         query_page = f"/{PAGE}"
 
     ALEO_PAGE_URL=f"{base_url}/firmy{query_page}?phrase={PHRASE}&count={COUNT}"
-    if VOIVODSHIPS:
-        ALEO_PAGE_URL += f"&voivodeships={VOIVODSHIPS}"
+    if VOIVODESHIPS:
+        ALEO_PAGE_URL += f"&voivodeships={VOIVODESHIPS}"
     if CITY:
         ALEO_PAGE_URL += f"&city={CITY}"
     if REGISTRY_TYPE:
         ALEO_PAGE_URL += f"&registryType={REGISTRY_TYPE}"
 
     driver.get(f"{ALEO_PAGE_URL}")
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-from bs4 import BeautifulSoup
-
-load_aleo_page(driver, PHRASE)
-
-page_source = driver.page_source
-soup = BeautifulSoup(page_source, "html.parser")
-
-company_count = get_company_count(soup)
+company_count = get_company_count()
 print(f"Found {company_count} companies")
 
 page_count = get_page_count(company_count, COUNT)
@@ -164,9 +171,13 @@ def _norm_site(url: str) -> str | None:
 
 
 def augment_companies_with_contacts(driver, companies_list: list[dict], base_url: str = "") -> list[dict]:
-    from time import sleep
     from urllib.parse import urljoin
     from pprint import pprint
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
+    wait = WebDriverWait(driver, 3)  # maksymalnie 3 sekundy
 
     original_window = driver.current_window_handle
 
@@ -181,7 +192,10 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
         driver.switch_to.new_window("tab")
         try:
             driver.get(url)
-            sleep(1)  # ewentualnie zastąp WebDriverWait
+            try:
+                wait.until(EC.presence_of_element_located((By.ID, "company-data-container")))
+            except:
+                continue
 
             soup = BeautifulSoup(driver.page_source, "html.parser")
 
@@ -287,7 +301,7 @@ def store_companies(companies_list: list) -> None:
                             c["phone"] if "phone" in c else None,
                             c["website"] if "website" in c else None,
                             PHRASE,
-                            VOIVODSHIPS,
+                            VOIVODESHIPS,
                             CITY,
                             c["krs"] if "krs" in c else None,
                             REGISTRY_TYPE
@@ -374,13 +388,11 @@ def filter_companies_not_in_db(companies_list):
     # ——— KONIEC ZAPYTANIA ———
 
 
-from time import sleep
-
 for page in range(1, page_count + 1):
+    from bs4 import BeautifulSoup
+
     load_aleo_page(driver, PHRASE, page=page)
     print(f"Page {page} of {page_count} loaded")
-
-    sleep(1)
 
     page_source = driver.page_source
     soup = BeautifulSoup(page_source, "html.parser")
