@@ -11,11 +11,16 @@ driver = webdriver.Chrome()
 
 # %%
 COUNT = 100
-PHRASE = "f"
+PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 0 1 2 3"  # fraza do wyszukiwania
+# PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 4 5 6 7"  # fraza do wyszukiwania
+# PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 8 9"  # fraza do wyszukiwania
 VOIVODESHIPS = ""
-CITY = "Wrocław"
-REGISTRY_TYPE = "REGON" # do wyboru KRS, CEIDG, REGON
+CITY = "Katowice"
+REGISTRY_TYPE = "CEIDG" # do wyboru CEIDG, KRS, REGON
+# REGISTRY_TYPE = "KRS" # do wyboru CEIDG, KRS, REGON
+# REGISTRY_TYPE = "REGON" # do wyboru CEIDG, KRS, REGON
 PAGE = 1
+COMPANIES_ADDED = 0
 
 base_url = "https://aleo.com/pl"
 
@@ -101,7 +106,6 @@ print(f"Found {company_count} companies")
 
 page_count = get_page_count(company_count, COUNT)
 print(f"Found {page_count} pages")
-
 
 
 
@@ -240,7 +244,7 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
 
         finally:
             count = count + 1
-            print(f"Company {count} of {len(companies_list)}:")
+            print(f"\nCompany {count} of {len(companies_list)}:")
             pprint(company)
             driver.close()
             driver.switch_to.window(original_window)
@@ -251,6 +255,9 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
 def store_companies(companies_list: list) -> None:
     from pprint import pprint
     import os, psycopg2
+
+    if len(companies_list) == 0:
+        return
 
     from dotenv import load_dotenv
     load_dotenv(override=True)
@@ -343,7 +350,7 @@ def filter_companies_not_in_db(companies_list):
 
     # ——— ZAPYTANIE DO BAZY POSTGRES ———
     try:
-        print("Zapisywanie do bazy PostgreSQL...")
+        print("Odczytywanie bazy PostgreSQL...")
         conn = psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
@@ -392,23 +399,27 @@ for page in range(1, page_count + 1):
     from bs4 import BeautifulSoup
 
     load_aleo_page(driver, PHRASE, page=page)
-    print(f"Page {page} of {page_count} loaded")
+    print(f"\nPage {page} of {page_count} loaded")
 
     page_source = driver.page_source
     soup = BeautifulSoup(page_source, "html.parser")
     companies_on_page = soup.find_all("div", class_="catalog-row-container")
     companies_list = extract_companies(companies_on_page)
+    print(f"Found {len(companies_list)} companies on page")
+
     companies_list = filter_companies_not_in_db(companies_list)
 
     companies_found_on_page = len(companies_list)
-    print(f"Found {companies_found_on_page} companies on page")
+    print(f"Found {companies_found_on_page} NEW companies on page")
 
     companies_processed = len(augment_companies_with_contacts(driver, companies_list))
     print(f"Processed {companies_processed} companies")
 
     store_companies(companies_list)
 
+    COMPANIES_ADDED += len(companies_list)
 
+print(f"Added {COMPANIES_ADDED} companies")
 
 # %%
 def db_create_tables() -> None:
@@ -426,7 +437,7 @@ def db_create_tables() -> None:
 
     # ——— ZAPIS DO BAZY POSTGRES ———
     try:
-        print("Zapisywanie do bazy PostgreSQL...")
+        print("Tworzenie bazy PostgreSQL...")
         conn = psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
