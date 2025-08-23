@@ -1,29 +1,46 @@
 # %%
 # INIT
-import warnings
+def init():
+    import warnings
 
-warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
 
-from selenium import webdriver
-driver = webdriver.Chrome()
+    from selenium import webdriver
 
+    # driver = webdriver.Chrome()
+    return webdriver.Chrome()
 
+driver = init()
 
 # %%
-COUNT = 100
-PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 0 1 2 3"  # fraza do wyszukiwania
-# PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 4 5 6 7"  # fraza do wyszukiwania
-# PHRASE = "a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 8 9"  # fraza do wyszukiwania
-VOIVODESHIPS = ""
-CITY = "Katowice"
-REGISTRY_TYPE = "CEIDG" # do wyboru CEIDG, KRS, REGON
-# REGISTRY_TYPE = "KRS" # do wyboru CEIDG, KRS, REGON
-# REGISTRY_TYPE = "REGON" # do wyboru CEIDG, KRS, REGON
-PAGE = 1
-COMPANIES_ADDED = 0
+def set_globals(count, phrase, voivodeships, city, registry_type, page, base_url):
+    global COUNT, PHRASE, VOIVODESHIPS, CITY, REGISTRY_TYPE, PAGE, COMPANIES_ADDED, BASE_URL
 
-base_url = "https://aleo.com/pl"
+    COUNT = count
+    PHRASE = phrase
+    VOIVODESHIPS = voivodeships
+    CITY = city
+    REGISTRY_TYPE = registry_type
+    PAGE = page
 
+    BASE_URL = base_url
+
+    COMPANIES_ADDED = 0
+
+
+set_globals(
+    count=100,
+    # phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 0 1 2 3",
+    # phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 4 5 6 7",
+    phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 8 9",
+    voivodeships="",
+    city="Katowice",
+    # registry_type="CEIDG", # do wyboru CEIDG, KRS, REGON
+    # registry_type="KRS", # do wyboru CEIDG, KRS, REGON
+    registry_type="REGON", # do wyboru CEIDG, KRS, REGON
+    page=1,
+    base_url="https://aleo.com/pl"
+)
 
 
 # %%
@@ -90,7 +107,7 @@ def load_aleo_page(
         PAGE = page
         query_page = f"/{PAGE}"
 
-    ALEO_PAGE_URL=f"{base_url}/firmy{query_page}?phrase={PHRASE}&count={COUNT}"
+    ALEO_PAGE_URL=f"{BASE_URL}/firmy{query_page}?phrase={PHRASE}&count={COUNT}"
     if VOIVODESHIPS:
         ALEO_PAGE_URL += f"&voivodeships={VOIVODESHIPS}"
     if CITY:
@@ -142,7 +159,7 @@ def extract_companies(companies_on_page: list) -> list[dict]:
 
         results.append({
             "name": name,
-            "url": f"{base_url}/{url}",
+            "url": f"{BASE_URL}/{url}",
             "address": address,
             "nip": nip,
             "regon": regon,
@@ -174,7 +191,7 @@ def _norm_site(url: str) -> str | None:
     return url
 
 
-def augment_companies_with_contacts(driver, companies_list: list[dict], base_url: str = "") -> list[dict]:
+def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL: str = "") -> list[dict]:
     from urllib.parse import urljoin
     from pprint import pprint
     from selenium.webdriver.common.by import By
@@ -190,8 +207,8 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], base_url
         url = (company.get("url") or "").strip()
         if not url:
             continue
-        if base_url:
-            url = urljoin(base_url, url)
+        if BASE_URL:
+            url = urljoin(BASE_URL, url)
 
         driver.switch_to.new_window("tab")
         try:
