@@ -111,8 +111,6 @@ def run_sync(adapter: MailerLiteAdapter, cfg: Config) -> None:
         seen.add(key)
         to_process.append(em)
 
-    to_process = ["marek.kustosz+test20@gmail.com"] #TODO: remove mock data!
-
     logger.info("Do dodania: %d adresów (po filtrach i deduplikacji).", len(to_process))
 
     for idx, email in enumerate(to_process, 1):
