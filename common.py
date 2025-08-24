@@ -114,7 +114,7 @@ def run_sync(adapter: MailerLiteAdapter, cfg: Config) -> None:
     logger.info("Do dodania: %d adresów (po filtrach i deduplikacji).", len(to_process))
 
     for idx, email in enumerate(to_process, 1):
-        status = "active"  # jak u Ciebie
+        status = None
         logger.info("[%d/%d] Upsert subskrybenta: %s", idx, len(to_process), email)
         try:
             resp = adapter.upsert_subscriber(
