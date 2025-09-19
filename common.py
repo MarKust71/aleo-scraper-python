@@ -78,9 +78,10 @@ def yield_emails_from_db(cfg: Config, limit: int = 0) -> Iterable[tuple[str, Opt
           WHERE email IS NOT NULL
             AND email <> ''
             AND search_city = %s
-            AND search_registry_type = %s
           """
-    params: list[object] = ["Katowice", "CEIDG"]
+    # AND search_registry_type = %s
+    # params: list[object] = ["Wrocław", "CEIDG"]
+    params: list[object] = ["Wrocław"]
     if limit and limit > 0:
         sql += " LIMIT %s"
         params.append(limit)

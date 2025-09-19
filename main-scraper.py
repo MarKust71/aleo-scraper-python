@@ -1,4 +1,3 @@
-# %%
 # INIT
 def init():
     import warnings
@@ -10,9 +9,7 @@ def init():
     # driver = webdriver.Chrome()
     return webdriver.Chrome()
 
-driver = init()
 
-# %%
 def set_globals(count, phrase, voivodeships, city, registry_type, page, base_url):
     global COUNT, PHRASE, VOIVODESHIPS, CITY, REGISTRY_TYPE, PAGE, COMPANIES_ADDED, BASE_URL
 
@@ -28,23 +25,7 @@ def set_globals(count, phrase, voivodeships, city, registry_type, page, base_url
     COMPANIES_ADDED = 0
 
 
-set_globals(
-    count=100,
-    phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 0 1 2 3",
-    # phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 4 5 6 7",
-    # phrase="a ą b c ć d e ę f g h i j k l ł m n ń o ó p q r s ś t u v w x y z ź ż 8 9",
-    voivodeships="",
-    city="Wrocław",
-    registry_type="CEIDG", # do wyboru CEIDG, KRS, REGON
-    # registry_type="KRS", # do wyboru CEIDG, KRS, REGON
-    # registry_type="REGON", # do wyboru CEIDG, KRS, REGON
-    page=1,
-    base_url="https://aleo.com/pl"
-)
-
-
-# %%
-def get_company_count() -> int | None:
+def get_company_count(driver) -> int | None:
     from bs4 import BeautifulSoup
 
     load_aleo_page(driver, PHRASE)
@@ -118,15 +99,7 @@ def load_aleo_page(
     driver.get(f"{ALEO_PAGE_URL}")
     wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-company_count = get_company_count()
-print(f"Found {company_count} companies")
 
-page_count = get_page_count(company_count, COUNT)
-print(f"Found {page_count} pages")
-
-
-
-# %%
 def extract_companies(companies_on_page: list) -> list[dict]:
     results = []
     for company in companies_on_page:
@@ -193,10 +166,10 @@ def _norm_site(url: str) -> str | None:
 
 def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL: str = "") -> list[dict]:
     from urllib.parse import urljoin
-    from pprint import pprint
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
+    from bs4 import BeautifulSoup
 
     wait = WebDriverWait(driver, 3)  # maksymalnie 3 sekundy
 
@@ -229,7 +202,7 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL
                 if a:
                     email = a.get("href", "").split("mailto:", 1)[-1].strip()
                 else:
-                    spans = [s for s in email_container.select("span") if "tooltip-icon" not in s.get("class", [])]
+                    spans = [s for s in email_container.select("span") if "tooltip-icon" not in s.get("class", '')]
                     if spans:
                         email = spans[-1].get_text(strip=True)
                 if email:
@@ -243,7 +216,7 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL
                 if a:
                     phone = a.get("href", "").split("tel:", 1)[-1].strip()
                 else:
-                    spans = [s for s in phone_container.select("span") if "tooltip-icon" not in s.get("class", [])]
+                    spans = [s for s in phone_container.select("span") if "tooltip-icon" not in s.get("class", '')]
                     if spans:
                         phone = spans[-1].get_text(strip=True)
                 if phone:
@@ -253,7 +226,7 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL
             site_container = soup.select_one("div.site")
             if site_container:
                 site = None
-                spans = [s for s in site_container.select("span") if "tooltip-icon" not in s.get("class", [])]
+                spans = [s for s in site_container.select("span") if "tooltip-icon" not in s.get("class", '')]
                 if spans:
                     site = spans[-1].get_text(strip=True)
                 if _norm_site(site):
@@ -261,8 +234,8 @@ def augment_companies_with_contacts(driver, companies_list: list[dict], BASE_URL
 
         finally:
             count = count + 1
-            print(f"\nCompany {count} of {len(companies_list)}:")
-            pprint(company)
+            # print(f"\nCompany {count} of {len(companies_list)}:")
+            # pprint(company)
             driver.close()
             driver.switch_to.window(original_window)
 
@@ -412,33 +385,6 @@ def filter_companies_not_in_db(companies_list):
     # ——— KONIEC ZAPYTANIA ———
 
 
-for page in range(1, page_count + 1):
-    from bs4 import BeautifulSoup
-
-    load_aleo_page(driver, PHRASE, page=page)
-    print(f"\nPage {page} of {page_count} loaded")
-
-    page_source = driver.page_source
-    soup = BeautifulSoup(page_source, "html.parser")
-    companies_on_page = soup.find_all("div", class_="catalog-row-container")
-    companies_list = extract_companies(companies_on_page)
-    print(f"Found {len(companies_list)} companies on page")
-
-    companies_list = filter_companies_not_in_db(companies_list)
-
-    companies_found_on_page = len(companies_list)
-    print(f"Found {companies_found_on_page} NEW companies on page")
-
-    companies_processed = len(augment_companies_with_contacts(driver, companies_list))
-    print(f"Processed {companies_processed} companies")
-
-    store_companies(companies_list)
-
-    COMPANIES_ADDED += len(companies_list)
-
-print(f"Added {COMPANIES_ADDED} companies")
-
-# %%
 def db_create_tables() -> None:
     import os, psycopg2
 
@@ -556,11 +502,3 @@ def db_create_tables() -> None:
             print("PostgreSQL connection closed.")
 
     # ——— KONIEC ZAPISU ———
-
-
-
-# %%
-# db_create_tables()
-driver.close()
-
-
